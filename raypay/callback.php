@@ -22,22 +22,18 @@ if (isset($_GET['do'])) {
     }
 
     $order_id = $_GET['order_id'];
-    $invoice_id = $_GET['?invoiceID'];
 
-
-    if (!empty($order_id) && !empty($invoice_id) ) {
+    if (!empty($order_id) ) {
         $amount = $cart->getOrderTotal();
         if (Configuration::get('raypay_currency') == "toman") {
             $amount *= 10;
         }
         if ( md5($amount . $order_id . Configuration::get('raypay_HASH_KEY')) == $_GET['hash']) {
-
-            $data = array('order_id' => $order_id);
-            $url = 'https://api.raypay.ir/raypay/api/v1/Payment/checkInvoice?pInvoiceID=' . $invoice_id;;
+            $url = 'https://api.raypay.ir/raypay/api/v1/Payment/verify';
             $options = array('Content-Type: application/json');
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($_POST));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
             curl_setopt($ch, CURLOPT_HTTPHEADER, $options);
             $result = curl_exec($ch);
@@ -50,12 +46,13 @@ if (isset($_GET['do'])) {
                     echo $raypay->error( $msg );
                 }
                 else {
-                    $state           = $result->Data->State;
+                    $state           = $result->Data->Status;
                     $verify_order_id = $result->Data->FactorNumber;
+                    $verify_invoice_id = $result->Data->InvoiceID;
                     $verify_amount   = $result->Data->Amount;
 
                     if ( empty($verify_order_id) || empty($verify_amount) || $state !== 1 ) {
-                        echo $raypay->error( raypay_get_failed_message( $invoice_id, $verify_order_id ) );
+                        echo $raypay->error( raypay_get_failed_message( $verify_invoice_id, $verify_order_id ) );
                     }
                     else {
                         error_reporting( E_ALL );
@@ -64,8 +61,8 @@ if (isset($_GET['do'])) {
                             $amount /= 10;
                         }
 
-                        $message = raypay_get_success_massage( $invoice_id, $verify_order_id );
-                        $raypay->saveOrder( $message, Configuration::get( 'PS_OS_PAYMENT' ), (int)$verify_order_id, $invoice_id);
+                        $message = raypay_get_success_massage( $verify_invoice_id, $verify_order_id );
+                        $raypay->saveOrder( $message, Configuration::get( 'PS_OS_PAYMENT' ), (int)$verify_order_id, $verify_invoice_id);
 
                         $_SESSION['order' . $verify_order_id] = '';
                         Tools::redirect( 'index.php?controller=order-confirmation'.

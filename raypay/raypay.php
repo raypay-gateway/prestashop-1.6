@@ -34,8 +34,9 @@ class raypay extends PaymentModule
         if (!sizeof(Currency::checkPaymentCurrencies($this->id)))
             $this->warning ='هیچ واحد پولی برای این ماژول انتخاب نشده است.';
         $config_userID = Configuration::getMultiple(array('raypay_user_id'));
-        $config_acceptorCode = Configuration::getMultiple(array('raypay_acceptor_code'));
-        if (!isset($config_userID['raypay_user_id']) || !isset($config_acceptorCode['raypay_acceptor_code']))
+        $config_marketingID = Configuration::getMultiple(array('raypay_marketing_id'));
+        $config_sandbox = Configuration::getMultiple(array('raypay_sandbox'));
+        if (!isset($config_userID['raypay_user_id']) || !isset($config_marketingID['raypay_marketing_id']))
             $this->warning = 'لطفا اطلاعات درگاه خود را در بخش تنظیمات درگاه رای پی وارد نمایید.';
 
     }
@@ -44,7 +45,8 @@ class raypay extends PaymentModule
     {
         if (!parent::install()
             || !Configuration::updateValue('raypay_user_id', '')
-            || !Configuration::updateValue('raypay_acceptor_code', '')
+            || !Configuration::updateValue('raypay_marketing_id', '')
+            || !Configuration::updateValue('raypay_sandbox', '')
             || !Configuration::updateValue('raypay_success_massage', '')
             || !Configuration::updateValue('raypay_failed_massage', '')
             || !Configuration::updateValue('raypay_currency', '')
@@ -62,7 +64,8 @@ class raypay extends PaymentModule
     {
         if (!parent::uninstall()
             || !Configuration::deleteByName('raypay_user_id')
-            || !Configuration::deleteByName('raypay_acceptor_code')
+            || !Configuration::deleteByName('raypay_marketing_id')
+            || !Configuration::deleteByName('raypay_sandbox')
             || !Configuration::deleteByName('raypay_success_massage')
             || !Configuration::deleteByName('raypay_failed_massage')
             || !Configuration::deleteByName('raypay_currency')
@@ -118,7 +121,8 @@ class raypay extends PaymentModule
     {
         if (Tools::isSubmit('raypay_submit')) {
             Configuration::updateValue('raypay_user_id', $_POST['raypay_user_id']);
-            Configuration::updateValue('raypay_acceptor_code', $_POST['raypay_acceptor_code']);
+            Configuration::updateValue('raypay_marketing_id', $_POST['raypay_marketing_id']);
+            Configuration::updateValue('raypay_sandbox', $_POST['raypay_sandbox']);
             Configuration::updateValue('raypay_currency', $_POST['raypay_currency']);
             Configuration::updateValue('raypay_success_massage', $_POST['raypay_success_massage']);
             Configuration::updateValue('raypay_failed_massage', $_POST['raypay_failed_massage']);
@@ -134,8 +138,10 @@ class raypay extends PaymentModule
         $this->_html .= '<div align="center"><form action="' . $_SERVER['REQUEST_URI'] . '" method="post">';
         $this->_html .= $this->l('شناسه کاربری :') . '<br><br>';
         $this->_html .= '<input type="text" name="raypay_user_id" value="' . Configuration::get('raypay_user_id') . '" ><br><br>';
-        $this->_html .= $this->l('کد پذیرنده :') . '<br><br>';
-        $this->_html .= '<input type="text" name="raypay_acceptor_code" value="' . Configuration::get('raypay_acceptor_code') . '" ><br><br>';
+        $this->_html .= $this->l('شناسه کسب و کار :') . '<br><br>';
+        $this->_html .= '<input type="text" name="raypay_marketing_id" value="' . Configuration::get('raypay_marketing_id') . '" ><br><br>';
+        $this->_html .= $this->l('فعالسازی SandBox :') . '<br><br>';
+        $this->_html .= '<select name="raypay_sandbox"><option value="yes"' . (Configuration::get('raypay_sandbox') == "yes" ? 'selected="selected"' : "") . '>' . $this->l('بله') . '</option><option value="no"' . (Configuration::get('raypay_sandbox') == "no" ? 'selected="selected"' : "") . '>' . $this->l('خیر') . '</option></select><br><br>';
         $this->_html .= $this->l('واحد پول :') . '<br><br>';
         $this->_html .= '<select name="raypay_currency"><option value="rial"' . (Configuration::get('raypay_currency') == "rial" ? 'selected="selected"' : "") . '>' . $this->l('Rial') . '</option><option value="toman"' . (Configuration::get('raypay_currency') == "toman" ? 'selected="selected"' : "") . '>' . $this->l('Toman') . '</option></select><br><br>';
         $this->_html .= $this->l('پیام پرداخت موفق :') . '<br><br>';
@@ -154,7 +160,8 @@ class raypay extends PaymentModule
     public function do_payment($cart)
     {
         $user_id = Configuration::get('raypay_user_id');
-        $acceptor_code = Configuration::get('raypay_acceptor_code');
+        $marketing_id = Configuration::get('raypay_marketing_id');
+        $sandbox = !(Configuration::get('raypay_sandbox') == 'no');
         $invoice_id             = round(microtime(true) * 1000);
         $amount = $cart->getOrderTotal();
         if (Configuration::get('raypay_currency') == "toman") {
@@ -186,7 +193,7 @@ class raypay extends PaymentModule
 
         $desc = 'پرداخت فروشگاه پرستاشاپ نسخه 1.6، سفارش شماره: ' . $order_id;
         $url = $this->context->link->getPageLink('index',true);;
-        $callback =  $url. 'modules/raypay/callback.php?do=callback&hash=' .md5($amount . $order_id . Configuration::get('raypay_HASH_KEY')) . '&order_id=' . $order_id . '&' ;
+        $callback =  $url. 'modules/raypay/callback.php?do=callback&hash=' .md5($amount . $order_id . Configuration::get('raypay_HASH_KEY')) . '&order_id=' . $order_id ;
         $mail = Context::getContext()->customer->email;
 
         $data = array(
@@ -195,15 +202,16 @@ class raypay extends PaymentModule
             'userID'       => $user_id,
             'redirectUrl'  => $callback,
             'factorNumber' => strval($order_id),
-            'acceptorCode' => $acceptor_code,
+            'marketingID' => $marketing_id,
             'email'        => $mail,
             'mobile'       => $phone,
             'fullName'     => $name,
-            'comment'      => $desc
+            'comment'      => $desc,
+            'enableSandBox'      => $sandbox,
         );
 
 
-        $url  = 'https://api.raypay.ir/raypay/api/v1/Payment/getPaymentTokenWithUserID';
+        $url  = 'https://api.raypay.ir/raypay/api/v1/Payment/pay';
         $options = array('Content-Type: application/json');
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -223,15 +231,9 @@ class raypay extends PaymentModule
             Tools::redirect( "/index.php?controller=$checkout_type&submitReorder=&id_order=$order_id&raypay-message=$msg");
             exit;
         } else {
-            $access_token = $result->Data->Accesstoken;
-            $terminal_id  = $result->Data->TerminalID;
-
-            echo '<p style="color:#ff0000; font:18px Tahoma; direction:rtl;">در حال اتصال به درگاه بانکی. لطفا صبر کنید ...</p>';
-            echo '<form name="frmRayPayPayment" method="post" action=" https://mabna.shaparak.ir:8080/Pay ">';
-            echo '<input type="hidden" name="TerminalID" value="' . $terminal_id . '" />';
-            echo '<input type="hidden" name="token" value="' . $access_token . '" />';
-            echo '<input class="submit" type="submit" value="پرداخت" /></form>';
-            echo '<script>document.frmRayPayPayment.submit();</script>';
+            $token = $result->Data;
+            $link='https://my.raypay.ir/ipg?token=' . $token;
+            Tools::redirect($link);
         }
     }
 
